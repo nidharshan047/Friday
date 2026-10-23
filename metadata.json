@@ -1,0 +1,6 @@
+{
+  "name": "Friday — Personal AI Assistant",
+  "description": "Personal AI assistant with chat, conversation history, persistent memory, and voice synthesis.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
