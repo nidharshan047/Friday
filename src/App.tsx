@@ -1,48 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
-  MessageSquare,
-  Plus,
-  Trash2,
-  Volume2,
-  VolumeX,
-  Brain,
-  Send,
-  Loader2,
-  Menu,
-  X,
-} from "lucide-react";
+import { MessageSquare, Plus, Trash2, Volume2, VolumeX, Brain, Send, Loader2, Menu, X, Sparkles, Search, Command, Mic, MicOff, AudioLines, ArrowUpRight, Zap, Settings2 } from "lucide-react";
 
-type Message = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  created_at?: string;
-};
-
-type Conversation = {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-};
-
-type Memory = {
-  id: string;
-  memory: string;
-  source: string;
-  created_at: string;
-};
+type Message = { id: string; role: "user" | "assistant"; content: string };
+type Conversation = { id: string; title: string; created_at: string; updated_at: string };
+type Memory = { id: string; memory: string; source: string; created_at: string };
+const welcome: Message = { id: "welcome", role: "assistant", content: "Hello. I'm Friday. What can I help you with?" };
+const starters = [{ icon: Zap, title: "Make a plan", prompt: "Help me turn an idea into a clear action plan." }, { icon: Brain, title: "Think it through", prompt: "Help me think through a difficult decision." }, { icon: Sparkles, title: "Create something", prompt: "Let's brainstorm a creative project." }];
 
 export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string>("conv-default");
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "Hello. I'm Friday. What can I help you with?",
-    },
-  ]);
+  const [activeConvId, setActiveConvId] = useState("conv-default");
+  const [messages, setMessages] = useState<Message[]>([welcome]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [newMemory, setNewMemory] = useState("");
   const [draft, setDraft] = useState("");
@@ -51,478 +19,99 @@ export default function App() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"chats" | "memories">("chats");
-
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [listening, setListening] = useState(false);
   const listEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speechRef = useRef<any>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  useEffect(() => { fetchConversations(); fetchMemories(); }, []);
+  useEffect(() => { listEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
   useEffect(() => {
-    fetchConversations();
-    fetchMemories();
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(v => !v); }
+      if (e.key === "Escape") { setPaletteOpen(false); setSidebarOpen(false); }
+    };
+    window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  useEffect(() => {
-    listEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, busy]);
-
-  async function fetchConversations() {
-    try {
-      const res = await fetch("/v1/conversations");
-      if (!res.ok) return;
-      const data = await res.json();
-      if (Array.isArray(data.conversations) && data.conversations.length > 0) {
-        setConversations(data.conversations);
-      }
-    } catch {
-      // ignore initial fetch error
-    }
-  }
-
-  async function fetchMemories() {
-    try {
-      const res = await fetch("/v1/memories");
-      if (!res.ok) return;
-      const data = await res.json();
-      if (Array.isArray(data.memories)) {
-        setMemories(data.memories);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  async function selectConversation(id: string) {
-    setActiveConvId(id);
-    setSidebarOpen(false);
-    try {
-      const res = await fetch(`/v1/conversations/${id}/messages`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (Array.isArray(data.messages)) {
-        setMessages(data.messages);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
+  async function fetchConversations() { try { const r = await fetch("/v1/conversations"); if (!r.ok) return; const d = await r.json(); if (Array.isArray(d.conversations)) setConversations(d.conversations); } catch {} }
+  async function fetchMemories() { try { const r = await fetch("/v1/memories"); if (!r.ok) return; const d = await r.json(); if (Array.isArray(d.memories)) setMemories(d.memories); } catch {} }
+  async function selectConversation(id: string) { setActiveConvId(id); setSidebarOpen(false); try { const r = await fetch("/v1/conversations/" + id + "/messages"); if (!r.ok) return; const d = await r.json(); if (Array.isArray(d.messages)) setMessages(d.messages); } catch {} }
   async function createNewConversation() {
     try {
-      const res = await fetch("/v1/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "New conversation" }),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.conversation) {
-        setConversations((prev) => [data.conversation, ...prev]);
-        setActiveConvId(data.conversation.id);
-        setMessages(
-          data.messages ?? [
-            {
-              id: "welcome",
-              role: "assistant",
-              content: "Hello. I'm Friday. What can I help you with?",
-            },
-          ]
-        );
-        setSidebarOpen(false);
-      }
-    } catch {
-      // ignore
-    }
+      const r = await fetch("/v1/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "New conversation" }) });
+      if (!r.ok) return; const d = await r.json();
+      if (d.conversation) { setConversations(p => [d.conversation, ...p]); setActiveConvId(d.conversation.id); setMessages(d.messages ?? [welcome]); setSidebarOpen(false); }
+    } catch {}
   }
-
   async function deleteConversation(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    try {
-      await fetch(`/v1/conversations/${id}`, { method: "DELETE" });
-      const res = await fetch("/v1/conversations");
-      if (res.ok) {
-        const data = await res.json();
-        setConversations(data.conversations || []);
-        if (activeConvId === id && data.conversations?.[0]) {
-          selectConversation(data.conversations[0].id);
-        }
-      }
-    } catch {
-      // ignore
-    }
+    try { await fetch("/v1/conversations/" + id, { method: "DELETE" }); const r = await fetch("/v1/conversations"); if (r.ok) { const d = await r.json(); setConversations(d.conversations || []); if (activeConvId === id) { if (d.conversations?.[0]) selectConversation(d.conversations[0].id); else { setActiveConvId("conv-default"); setMessages([welcome]); } } } } catch {}
   }
-
   async function addMemory(e: React.FormEvent) {
-    e.preventDefault();
-    const text = newMemory.trim();
-    if (!text) return;
-    try {
-      const res = await fetch("/v1/memories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ memory: text, source: "user" }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMemories((prev) => [data.memory, ...prev]);
-        setNewMemory("");
-      }
-    } catch {
-      // ignore
-    }
+    e.preventDefault(); const text = newMemory.trim(); if (!text) return;
+    try { const r = await fetch("/v1/memories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory: text, source: "user" }) }); if (r.ok) { const d = await r.json(); setMemories(p => [d.memory, ...p]); setNewMemory(""); } } catch {}
   }
-
-  async function removeMemory(id: string) {
-    try {
-      await fetch(`/v1/memories/${id}`, { method: "DELETE" });
-      setMemories((prev) => prev.filter((m) => m.id !== id));
-    } catch {
-      // ignore
-    }
-  }
-
+  async function removeMemory(id: string) { try { await fetch("/v1/memories/" + id, { method: "DELETE" }); setMemories(p => p.filter(m => m.id !== id)); } catch {} }
   async function speakMessage(msg: Message) {
-    if (speakingId === msg.id) {
-      audioRef.current?.pause();
-      setSpeakingId(null);
-      return;
-    }
-
+    if (speakingId === msg.id) { audioRef.current?.pause(); setSpeakingId(null); return; }
     setSpeakingId(msg.id);
     try {
-      const res = await fetch("/v1/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: msg.content }),
-      });
-      if (!res.ok) throw new Error("TTS failed");
-      const data = await res.json();
-      if (data.audioBase64) {
-        if (audioRef.current) {
-          audioRef.current.pause();
-        }
-        const audio = new Audio(`data:audio/wav;base64,${data.audioBase64}`);
-        audioRef.current = audio;
-        audio.onended = () => setSpeakingId(null);
-        audio.onerror = () => setSpeakingId(null);
-        await audio.play();
-      } else {
-        setSpeakingId(null);
-      }
-    } catch {
-      setSpeakingId(null);
-    }
+      const r = await fetch("/v1/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: msg.content }) });
+      if (!r.ok) throw new Error("TTS failed"); const d = await r.json();
+      if (d.audioBase64) { audioRef.current?.pause(); const audio = new Audio("data:audio/wav;base64," + d.audioBase64); audioRef.current = audio; audio.onended = () => setSpeakingId(null); audio.onerror = () => setSpeakingId(null); await audio.play(); } else setSpeakingId(null);
+    } catch { setSpeakingId(null); }
   }
-
-  async function send() {
-    const content = draft.trim();
-    if (!content || busy) return;
-    const userMessage: Message = {
-      id: `${Date.now()}`,
-      role: "user",
-      content,
-    };
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
-    setDraft("");
-    setBusy(true);
-
+  async function send(text = draft) {
+    const content = text.trim(); if (!content || busy) return;
+    const userMessage: Message = { id: String(Date.now()), role: "user", content };
+    const updated = [...messages, userMessage]; setMessages(updated); setDraft(""); setBusy(true);
     try {
-      const response = await fetch("/v1/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: activeConvId,
-          messages: updatedMessages.map(({ role, content }) => ({
-            role,
-            content,
-          })),
-        }),
-      });
-      if (!response.ok) throw new Error(`API error (${response.status})`);
-      const data: { reply: string } = await response.json();
-      const assistantMessage: Message = {
-        id: `${Date.now()}-reply`,
-        role: "assistant",
-        content: data.reply,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-      fetchConversations();
-      if (autoSpeak) {
-        speakMessage(assistantMessage);
-      }
-    } catch (e) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `${Date.now()}-error`,
-          role: "assistant",
-          content: `I couldn't reach Friday's API. Check the API URL and server. ${String(e)}`,
-        },
-      ]);
-    } finally {
-      setBusy(false);
-    }
+      const r = await fetch("/v1/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId: activeConvId, messages: updated.map(({ role, content }) => ({ role, content })) }) });
+      if (!r.ok) throw new Error("API error (" + r.status + ")");
+      const d: { reply: string } = await r.json(); const reply: Message = { id: String(Date.now()) + "-reply", role: "assistant", content: d.reply };
+      setMessages(p => [...p, reply]); fetchConversations(); if (autoSpeak) speakMessage(reply);
+    } catch (e) { setMessages(p => [...p, { id: String(Date.now()) + "-error", role: "assistant", content: "I couldn't reach Friday's API. Check the API URL and server. " + String(e) }]); }
+    finally { setBusy(false); }
   }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+  function toggleMic() {
+    const Speech = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!Speech) { inputRef.current?.focus(); return; }
+    if (listening) { speechRef.current?.stop(); setListening(false); return; }
+    const rec = new Speech(); speechRef.current = rec; rec.lang = "en-US"; rec.interimResults = true;
+    rec.onresult = (event: any) => setDraft(Array.from(event.results).map((x: any) => x[0].transcript).join(""));
+    rec.onend = () => setListening(false); rec.onerror = () => setListening(false); rec.start(); setListening(true);
   }
+  const commands = [
+    { label: "Start a new conversation", hint: "Create", action: () => { createNewConversation(); setPaletteOpen(false); } },
+    { label: "Open memories", hint: "Navigate", action: () => { setActiveTab("memories"); setPaletteOpen(false); } },
+    { label: "Open chats", hint: "Navigate", action: () => { setActiveTab("chats"); setPaletteOpen(false); } },
+    { label: autoSpeak ? "Turn voice replies off" : "Turn voice replies on", hint: "Settings", action: () => { setAutoSpeak(v => !v); setPaletteOpen(false); } }
+  ].filter(x => x.label.toLowerCase().includes(paletteQuery.toLowerCase()));
 
-  return (
-    <div className="flex h-screen w-full bg-[#0b1020] text-[#f3f5ff] overflow-hidden">
-      {/* Mobile Sidebar Backdrop */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-20 bg-black/60 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar: Conversations & Memories (from supabase/migrations/0001_friday_core.sql) */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-72 flex-col border-r border-[#232b40] bg-[#0e1528] transition-transform duration-200 md:static md:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex items-center justify-between border-b border-[#232b40] px-5 py-4">
-          <div>
-            <h1 className="text-xl font-extrabold tracking-[4px] text-[#e8edff]">
-              FRIDAY
-            </h1>
-            <p className="mt-0.5 text-xs text-[#9aa6c4]">
-              Personal AI assistant
-            </p>
-          </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="rounded-lg p-1.5 text-[#9aa6c4] hover:bg-[#171f33] md:hidden"
-            aria-label="Close menu"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="grid grid-cols-2 gap-1 border-b border-[#232b40] p-2">
-          <button
-            onClick={() => setActiveTab("chats")}
-            className={`flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-bold tracking-wider transition-colors ${
-              activeTab === "chats"
-                ? "bg-[#253d70] text-[#f3f5ff]"
-                : "text-[#9aa6c4] hover:bg-[#171f33]"
-            }`}
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-            CHATS
-          </button>
-          <button
-            onClick={() => setActiveTab("memories")}
-            className={`flex items-center justify-center gap-2 rounded-lg py-2 text-xs font-bold tracking-wider transition-colors ${
-              activeTab === "memories"
-                ? "bg-[#253d70] text-[#f3f5ff]"
-                : "text-[#9aa6c4] hover:bg-[#171f33]"
-            }`}
-          >
-            <Brain className="h-3.5 w-3.5" />
-            MEMORIES ({memories.length})
-          </button>
-        </div>
-
-        {activeTab === "chats" ? (
-          <div className="flex flex-1 flex-col overflow-hidden p-3">
-            <button
-              onClick={createNewConversation}
-              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#7da2ff] px-4 py-2.5 text-sm font-extrabold text-[#0b1020] transition hover:bg-[#93b2ff]"
-            >
-              <Plus className="h-4 w-4" />
-              New Conversation
-            </button>
-
-            <div className="flex-1 space-y-1.5 overflow-y-auto pr-1">
-              {conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  onClick={() => selectConversation(conv.id)}
-                  className={`group flex cursor-pointer items-center justify-between rounded-xl px-3 py-2.5 text-sm transition ${
-                    activeConvId === conv.id
-                      ? "border border-[#303b56] bg-[#171f33] text-[#f3f5ff]"
-                      : "text-[#9aa6c4] hover:bg-[#151d30] hover:text-[#e8edff]"
-                  }`}
-                >
-                  <span className="truncate pr-2">{conv.title}</span>
-                  <button
-                    onClick={(e) => deleteConversation(conv.id, e)}
-                    className="opacity-0 transition group-hover:opacity-100 hover:text-red-400"
-                    title="Delete conversation"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-1 flex-col overflow-hidden p-3">
-            <form onSubmit={addMemory} className="mb-3 space-y-2">
-              <textarea
-                value={newMemory}
-                onChange={(e) => setNewMemory(e.target.value)}
-                placeholder="Add a persistent memory for Friday (e.g., 'I work as a product designer')…"
-                rows={2}
-                className="w-full resize-none rounded-xl border border-[#303b56] bg-[#151d30] px-3 py-2 text-xs text-[#f3f5ff] placeholder-[#8d94a3] focus:border-[#7da2ff] focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#7da2ff] px-3 py-2 text-xs font-extrabold text-[#0b1020] transition hover:bg-[#93b2ff]"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Save Memory
-              </button>
-            </form>
-
-            <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-              {memories.map((m) => (
-                <div
-                  key={m.id}
-                  className="group flex items-start justify-between gap-2 rounded-xl border border-[#2a3550] bg-[#171f33] p-3 text-xs text-[#e8edff]"
-                >
-                  <p className="leading-relaxed">{m.memory}</p>
-                  <button
-                    onClick={() => removeMemory(m.id)}
-                    className="shrink-0 text-[#8d94a3] transition hover:text-red-400"
-                    title="Remove memory"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </aside>
-
-      {/* Main Chat Screen (matches apps/mobile/app/index.tsx styling) */}
-      <main className="flex flex-1 flex-col bg-[#0b1020]">
-        {/* Header */}
-        <header className="flex items-center justify-between border-b border-[#232b40] px-5 pt-3 pb-3.5">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="rounded-lg p-1.5 text-[#9aa6c4] hover:bg-[#171f33] md:hidden"
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div>
-              <div className="text-[23px] font-extrabold tracking-[4px] text-[#e8edff]">
-                FRIDAY
-              </div>
-              <div className="mt-0.5 text-sm text-[#9aa6c4]">
-                Personal AI assistant
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setAutoSpeak((v) => !v)}
-            className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition ${
-              autoSpeak
-                ? "border-[#7da2ff] bg-[#253d70] text-[#f3f5ff]"
-                : "border-[#303b56] bg-[#151d30] text-[#9aa6c4] hover:text-[#f3f5ff]"
-            }`}
-            title="Toggle automatic voice reply"
-          >
-            {autoSpeak ? (
-              <Volume2 className="h-4 w-4 text-[#7da2ff]" />
-            ) : (
-              <VolumeX className="h-4 w-4" />
-            )}
-            <span>{autoSpeak ? "Voice On" : "Voice Off"}</span>
-          </button>
-        </header>
-
-        {/* Message List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          <div className="mx-auto flex max-w-3xl flex-col gap-3">
-            {messages.map((item) => {
-              const isUser = item.role === "user";
-              return (
-                <div
-                  key={item.id}
-                  className={`max-w-[88%] rounded-2xl p-[13px] ${
-                    isUser
-                      ? "self-end bg-[#253d70]"
-                      : "self-start border border-[#2a3550] bg-[#171f33]"
-                  }`}
-                >
-                  <div className="mb-[5px] flex items-center justify-between gap-3">
-                    <span className="text-[10px] font-extrabold tracking-[1.5px] text-[#9caed7]">
-                      {isUser ? "YOU" : "FRIDAY"}
-                    </span>
-                    {!isUser && (
-                      <button
-                        onClick={() => speakMessage(item)}
-                        className="rounded p-1 text-[#9caed7] transition hover:bg-[#253d70]/50 hover:text-[#f3f5ff]"
-                        title="Read message aloud"
-                      >
-                        <Volume2
-                          className={`h-3.5 w-3.5 ${
-                            speakingId === item.id
-                              ? "animate-pulse text-[#7da2ff]"
-                              : ""
-                          }`}
-                        />
-                      </button>
-                    )}
-                  </div>
-                  <div className="whitespace-pre-wrap text-[15px] leading-[21px] text-[#f3f5ff]">
-                    {item.content}
-                  </div>
-                </div>
-              );
-            })}
-            {busy && (
-              <div className="self-start rounded-2xl border border-[#2a3550] bg-[#171f33] px-4 py-3">
-                <Loader2 className="h-5 w-5 animate-spin text-[#7da2ff]" />
-              </div>
-            )}
-            <div ref={listEndRef} />
-          </div>
-        </div>
-
-        {/* Composer */}
-        <div className="border-t border-[#232b40] p-3">
-          <div className="mx-auto flex max-w-3xl items-end gap-[9px]">
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask Friday anything…"
-              maxLength={4000}
-              disabled={busy}
-              rows={1}
-              className="max-h-[130px] min-h-[46px] flex-1 resize-y rounded-[14px] border border-[#303b56] bg-[#151d30] px-[14px] py-[12px] text-[15px] text-[#f3f5ff] placeholder-[#8d94a3] focus:border-[#7da2ff] focus:outline-none disabled:opacity-60"
-            />
-            <button
-              onClick={send}
-              disabled={busy || !draft.trim()}
-              className="rounded-[13px] bg-[#7da2ff] px-[17px] py-[13px] text-sm font-extrabold text-[#0b1020] transition hover:bg-[#93b2ff] active:opacity-70 disabled:opacity-50"
-            >
-              <span className="flex items-center gap-1.5">
-                <span>Send</span>
-                <Send className="h-3.5 w-3.5" />
-              </span>
-            </button>
-          </div>
-        </div>
-
-        <p className="pb-2 text-center text-[11px] text-[#7e8aa7]">
-          Voice synthesis is available on every response; text fallback stays
-          available.
-        </p>
-      </main>
-    </div>
-  );
+  return <div className="friday-shell">
+    {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)} />}
+    <aside className={"friday-sidebar " + (sidebarOpen ? "sidebar-open" : "")}>
+      <div className="brand-row"><div className="brand-mark"><AudioLines size={19}/></div><div className="brand-copy"><strong>FRIDAY</strong><span>PERSONAL INTELLIGENCE</span></div><button className="icon-button mobile-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu"><X size={17}/></button></div>
+      <button className="new-chat-button" onClick={createNewConversation}><Plus size={17}/> New conversation <span>⌘ N</span></button>
+      <div className="side-tabs"><button className={activeTab === "chats" ? "selected" : ""} onClick={() => setActiveTab("chats")}><MessageSquare size={15}/> Chats</button><button className={activeTab === "memories" ? "selected" : ""} onClick={() => setActiveTab("memories")}><Brain size={15}/> Memory <span>{memories.length}</span></button></div>
+      {activeTab === "chats" ? <section className="side-section"><div className="section-label">RECENT</div><div className="conversation-list">{conversations.map(c => <div key={c.id} onClick={() => selectConversation(c.id)} className={"conversation-item " + (activeConvId === c.id ? "active" : "")}><MessageSquare size={14}/><span>{c.title}</span><button onClick={e => deleteConversation(c.id, e)} aria-label="Delete conversation"><Trash2 size={14}/></button></div>)}{!conversations.length && <p className="quiet-empty">Your conversations will appear here.</p>}</div></section> : <section className="side-section memory-section"><div className="section-label">MEMORY BANK</div><form className="memory-form" onSubmit={addMemory}><textarea value={newMemory} onChange={e => setNewMemory(e.target.value)} placeholder="Something Friday should remember…" rows={3}/><button type="submit"><Plus size={14}/> Save memory</button></form><div className="memory-list">{memories.map(m => <div className="memory-card" key={m.id}><p>{m.memory}</p><button onClick={() => removeMemory(m.id)} aria-label="Remove memory"><Trash2 size={13}/></button></div>)}</div></section>}
+      <div className="sidebar-bottom"><div className="status-dot"/><div><strong>Friday is ready</strong><span>All systems available</span></div><button className="icon-button" onClick={() => setPaletteOpen(true)} aria-label="Settings and commands"><Settings2 size={16}/></button></div>
+    </aside>
+    <main className="friday-main">
+      <header className="topbar"><div className="topbar-left"><button className="icon-button mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open sidebar"><Menu size={19}/></button><div className="breadcrumb">Workspace <span>/</span> <b>{activeTab === "chats" ? "Assistant" : "Memory"}</b></div></div><div className="topbar-actions"><button className="command-trigger" onClick={() => setPaletteOpen(true)}><Search size={14}/> <span>Quick actions</span><kbd>⌘ K</kbd></button><div className="top-status"><span className="status-dot"/><span>Online</span></div><button className={"voice-toggle " + (autoSpeak ? "voice-on" : "")} onClick={() => setAutoSpeak(v => !v)} title="Toggle automatic voice replies">{autoSpeak ? <Volume2 size={16}/> : <VolumeX size={16}/>}</button></div></header>
+      <div className="chat-scroll"><div className="chat-content">
+        {messages.length <= 1 && messages[0]?.id === "welcome" ? <div className="welcome-screen">
+          <div className="orb-wrap"><div className="orb-glow"/><div className="voice-orb"><div className="orb-core"/><span className="orb-wave wave-one"/><span className="orb-wave wave-two"/><span className="orb-wave wave-three"/></div><div className="orb-caption"><span className="status-dot"/> READY TO ASSIST</div></div>
+          <div className="welcome-copy"><div className="eyebrow"><Sparkles size={13}/> YOUR PERSONAL INTELLIGENCE</div><h1>What’s on your <em>mind?</em></h1><p>Think out loud. Get clarity. Make your next move.</p></div>
+          <div className="starter-grid">{starters.map(s => <button key={s.title} className="starter-card" onClick={() => { setDraft(s.prompt); inputRef.current?.focus(); }}><div className="starter-icon"><s.icon size={17}/></div><div><strong>{s.title}</strong><span>{s.prompt}</span></div><ArrowUpRight size={15} className="starter-arrow"/></button>)}</div>
+        </div> : <div className="message-stack">{messages.map(m => <article key={m.id} className={"message-row " + (m.role === "user" ? "user-row" : "")}>{m.role === "assistant" && <div className="assistant-avatar"><AudioLines size={15}/></div>}<div className={"message-bubble " + (m.role === "user" ? "user-bubble" : "assistant-bubble")}><div className="message-meta">{m.role === "user" ? "YOU" : "FRIDAY"}{m.role === "assistant" && <button onClick={() => speakMessage(m)} title="Read aloud" className={speakingId === m.id ? "speaking" : ""}><Volume2 size={14}/></button>}</div><div className="message-text">{m.content}</div></div></article>)}{busy && <div className="message-row"><div className="assistant-avatar"><AudioLines size={15}/></div><div className="typing-bubble"><span/><span/><span/></div></div>}<div ref={listEndRef}/></div>}
+      </div></div>
+      <div className="composer-area"><div className="composer-shell"><textarea ref={inputRef} value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Message Friday…" maxLength={4000} rows={1} disabled={busy}/><div className="composer-tools"><div className="composer-hint"><span>↵</span> to send <span className="hint-divider">·</span> shift + ↵ for new line</div><div className="composer-actions"><button className={"mic-button " + (listening ? "listening" : "")} onClick={toggleMic} aria-label={listening ? "Stop voice input" : "Start voice input"} title="Voice input">{listening ? <MicOff size={16}/> : <Mic size={16}/>}</button><button className="send-button" onClick={() => send()} disabled={busy || !draft.trim()} aria-label="Send message">{busy ? <Loader2 size={17} className="spin"/> : <Send size={16}/>}</button></div></div></div><div className="composer-footnote"><span><Sparkles size={11}/> Friday can make mistakes. Check important details.</span><span>PRIVATE WORKSPACE</span></div></div>
+    </main>
+    {paletteOpen && <div className="palette-overlay" onClick={() => setPaletteOpen(false)}><div className="command-palette" onClick={e => e.stopPropagation()}><div className="palette-search"><Search size={17}/><input autoFocus placeholder="What would you like to do?" value={paletteQuery} onChange={e => setPaletteQuery(e.target.value)}/><kbd>ESC</kbd></div><div className="palette-label">QUICK ACTIONS</div>{commands.map(c => <button key={c.label} className="palette-item" onClick={c.action}><Command size={15}/><span>{c.label}</span><small>{c.hint}</small></button>)}<div className="palette-footer"><span>Navigate with your keyboard</span><span><kbd>↵</kbd> Select</span></div></div></div>}
+  </div>;
 }
