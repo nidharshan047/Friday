@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Friday",
+    "slug": "friday-assistant",
+    "scheme": "friday",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
